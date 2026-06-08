@@ -18,11 +18,31 @@ class App {
     }
 
     init() {
-        initAudioWarmup();
         this.previewManager.init();
         this.bindMenuEvents();
+        this.bindStartOverlay();
     }
 
+    bindStartOverlay() {
+        const overlay = document.getElementById('startOverlay');
+        if (!overlay) {
+            // Если оверлея нет — fallback на старую систему
+            initAudioWarmup();
+            return;
+        }
+
+        const startApp = () => {
+            warmAudio(); // <-- Разблокируем AudioContext
+            overlay.classList.add('fade-out');
+            setTimeout(() => overlay.remove(), 600);
+            // Убираем обработчики
+            overlay.removeEventListener('pointerdown', startApp);
+            overlay.removeEventListener('touchstart', startApp);
+        };
+
+        overlay.addEventListener('pointerdown', startApp);
+        overlay.addEventListener('touchstart', startApp);
+    }
     bindMenuEvents() {
         const mainMenu = document.getElementById('mainMenu');
 

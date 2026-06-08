@@ -27,7 +27,11 @@ export function playTone(freq, type, duration, vol = 0.15) {
     osc.start();
     osc.stop(audioCtx.currentTime + duration);
 }
-
+export function playAchievement() {
+    playTone(784, 'triangle', 0.08, 0.12);
+    setTimeout(() => playTone(988, 'triangle', 0.12, 0.12), 100);
+    setTimeout(() => playTone(1175, 'triangle', 0.2, 0.1), 220);
+}
 export function playClick() { playTone(520, 'triangle', 0.06, 0.08); }
 export function playSnap() {
     playTone(440, 'sine', 0.15, 0.2);
@@ -46,4 +50,12 @@ export function playWin() {
 export function initAudioWarmup() {
     document.addEventListener('pointerdown', warmAudio, { once: true });
     document.addEventListener('touchstart', warmAudio, { once: true });
+}
+
+export function playQuizSelect() {
+    playTone(880, 'sine', 0.06, 0.1);
+    setTimeout(() => playTone(1100, 'sine', 0.1, 0.08), 60);
+}
+export function playHover() {
+    playTone(660, 'sine', 0.04, 0.06);
 }

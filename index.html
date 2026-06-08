@@ -122,10 +122,10 @@
         <div class="crash-title">ДРОН ПОТЕРПЕЛ КРУШЕНИЕ</div>
         <div class="crash-divider"></div>
         <div class="crash-text">
-            <p>Твой дрон врезался в дерево на скорости 22 м/с. Корпус разрушен, компоненты разлетелись в радиусе нескольких десятков метров.</p>
-            <p>Связь с бортовой электроникой утеряна, но данные о конструкции сохранены.</p>
-            <p>Для восстановления аппарата тебе предстоит собрать его заново с помощью <strong>инструкции-тренажёра</strong>: изучить каждую деталь, найти её место в конструкции и закрепить.</p>
-        </div>
+            <p>🔴 <strong>КАТАСТРОФА</strong></p>
+            <p>Дрон уничтожен. Высокоскоростное столкновение с препятствием. Обломки на расстоянии 50+ метров.</p>
+            <p>Бортовой ИИ — офлайн. Телеметрия — утеряна. Единственное, что осталось: <strong>чертежи в памяти тренажёра</strong>.</p>
+            <p><strong>▶ МИССИЯ:</strong> пройти обучающий симулятор → изучить все компоненты → восстановить сборку поэтапно. Без полной реконструкции запуск невозможен.</p></div>
         <button class="crash-btn" id="btnStartRepair">🔧 Начать сборку</button>
     </div>
 </div>
@@ -244,7 +244,19 @@
         </div>
     </div>
 </div>
+<script type="module">
+    import { playHover, playClick, warmAudio } from './src/core/audio-manager.js';
+    document.addEventListener('pointerdown', warmAudio, { once: true });
 
+    const btnLearning = document.getElementById('btnLearning');
+    const btnFree = document.getElementById('btnFree');
+
+    [btnLearning, btnFree].forEach(btn => {
+        if (!btn) return;
+        btn.addEventListener('mouseenter', () => playHover());
+        btn.addEventListener('click', () => playClick());
+    });
+</script>
 <script type="module" src="src/app.js"></script>
 </body>
 </html>

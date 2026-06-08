@@ -1,12 +1,11 @@
 import { Mode } from './mode.js';
 import { hslToRgb, normalizeAngle0, angleDiff } from '../utils/math.js';
 import { CONFIG } from '../config.js';
-import { playClick, playSnap, playStar, playWin } from '../core/audio-manager.js';
 import { checkAchievements, levelStars } from '../data/achievements.js';
 import { UIManager } from '../core/ui-manager.js';
 import { AssetManager } from '../core/asset-manager.js';
 import { paintHierarchy } from '../utils/babylon.js';
-
+import { playClick, playSnap, playStar, playWin, playQuizSelect } from '../core/audio-manager.js';
 export class LearningMode extends Mode {
     constructor(parts, getPartScale, previewManager) {
         super('learning');
@@ -56,8 +55,17 @@ export class LearningMode extends Mode {
         this.camera.lowerRadiusLimit = 2.5; this.camera.upperRadiusLimit = 12;
         this.camera.attachControl(canvas, true);
         this.camera.inputs.attached.pointers.buttons = [1, 2];
-        if (this.camera.inputs.attached.mousewheel) this.camera.inputs.attached.mousewheel.detachControl();
+        if (this.camera.inputs.attached.mousewheel) {
+            this.camera.inputs.remove(this.camera.inputs.attached.mousewheel);
+        }
+// Полностью вырезаем встроенный зум колесом из камеры
+        if (this.camera.inputs.attached.mousewheel) {
+            this.camera.inputs.remove(this.camera.inputs.attached.mousewheel);
+        }
 
+// Отключаем системные жесты
+        canvas.style.touchAction = 'none';
+        document.body.style.overscrollBehavior = 'none';
         const hemi = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0, 1, 0), this.scene);
         hemi.intensity = 0.45;
         const dir = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-1, -2, -1), this.scene);
@@ -102,7 +110,10 @@ export class LearningMode extends Mode {
         this.setupPointerEvents(canvas);
         this.engine.runRenderLoop(() => { if (this.scene) this.scene.render(); });
         window.addEventListener('resize', () => this.engine?.resize());
+// Глобально глушим браузерный зум Ctrl+Wheel / Meta+Wheel
 
+// Отключаем системные жесты на canvas
+        canvas.style.touchAction = 'none';
         AssetManager.preloadAll(this.scene, this.parts, (pct) => {
             const bar = document.getElementById('loadingBar');
             if (bar) bar.style.width = pct + '%';
@@ -137,7 +148,50 @@ export class LearningMode extends Mode {
                 lastMouseY = e.clientY;
             }
         });
+        this._wheelHandler = (e) => {
+            const isOverCanvas = e.target === canvas || canvas.contains(e.target);
+            if (!isOverCanvas) return;
+            if (!e.cancelable) return;
 
+            const hasShift = e.shiftKey;
+            const hasCtrl = e.ctrlKey || e.metaKey;
+
+            // Если нет модификаторов — зум камеры (наше ручное управление)
+            if (!hasShift && !hasCtrl) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                if (this.camera) {
+                    this.camera.radius += e.deltaY * 0.01;
+                    this.camera.radius = Math.max(
+                        this.camera.lowerRadiusLimit,
+                        Math.min(this.camera.upperRadiusLimit, this.camera.radius)
+                    );
+                }
+                return;
+            }
+
+            // Shift / Ctrl / Shift+Ctrl — вращение детали
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            if (this.phase !== 'play' || !this.activeMesh) return;
+
+            this.ensureRotationEuler();
+            const SENSITIVITY = 0.0008; // чуть увеличили, чтобы было плавнее при редких событиях
+
+            if (hasShift && hasCtrl) {
+                this.activeMesh.rotation.z += e.deltaY * SENSITIVITY;
+            } else if (hasShift) {
+                this.activeMesh.rotation.y += e.deltaY * SENSITIVITY;
+            } else if (hasCtrl) {
+                this.activeMesh.rotation.x += e.deltaY * SENSITIVITY;
+            }
+
+            this.snapRotationIfClose();
+            this.checkAutoSnap();
+        };
+
+        window.addEventListener('wheel', this._wheelHandler, { passive: false, capture: true });
         canvas.addEventListener('pointermove', (e) => {
             if (this.phase !== 'play' || !this.activeMesh || !this.gameDragging) return;
             e.preventDefault();
@@ -148,7 +202,7 @@ export class LearningMode extends Mode {
                     this.activeMesh.position.z = t.z + (this.gameDragOffset ? this.gameDragOffset.z : 0);
                 }
             } else {
-                const dy = (lastMouseY - e.clientY) * 0.006;
+                const dy = (lastMouseY - e.clientY) * 0.0015;
                 this.activeMesh.position.y += dy;
             }
             lastMouseY = e.clientY;
@@ -159,19 +213,7 @@ export class LearningMode extends Mode {
             if (this.gameDragging) { this.gameDragging = false; this.gameDragOffset = null; canvas.releasePointerCapture(e.pointerId); }
         });
 
-        canvas.addEventListener('wheel', (e) => {
-            e.preventDefault(); e.stopPropagation();
-            if (this.phase !== 'play' || !this.activeMesh) {
-                if (this.camera) { this.camera.radius += e.deltaY * 0.01; this.camera.radius = Math.max(this.camera.lowerRadiusLimit, Math.min(this.camera.upperRadiusLimit, this.camera.radius)); }
-                return;
-            }
-            this.ensureRotationEuler();
-            const SENSITIVITY = 0.0005;
-            if (e.shiftKey && (e.ctrlKey || e.metaKey)) { this.activeMesh.rotation.z += e.deltaY * SENSITIVITY; this.snapRotationIfClose(); this.checkAutoSnap(); }
-            else if (e.shiftKey) { this.activeMesh.rotation.y += e.deltaY * SENSITIVITY; this.snapRotationIfClose(); this.checkAutoSnap(); }
-            else if (e.ctrlKey || e.metaKey) { this.activeMesh.rotation.x += e.deltaY * SENSITIVITY; this.snapRotationIfClose(); this.checkAutoSnap(); }
-            else { if (this.camera) { this.camera.radius += e.deltaY * 0.01; this.camera.radius = Math.max(this.camera.lowerRadiusLimit, Math.min(this.camera.upperRadiusLimit, this.camera.radius)); } }
-        }, { passive: false });
+
 
         canvas.addEventListener('touchstart', (e) => {
             if (this.phase !== 'play' || !this.activeMesh) return;
@@ -255,34 +297,55 @@ export class LearningMode extends Mode {
         const p = this.parts[this.level];
         const dist = BABYLON.Vector3.Distance(this.activeMesh.position, p.targetPos);
 
+        this.ensureRotationEuler();
+
+        // === Кватернионная проверка угла: не боится оборотов и gimbal lock ===
+        const currentQ = BABYLON.Quaternion.FromEulerAngles(
+            this.activeMesh.rotation.x,
+            this.activeMesh.rotation.y,
+            this.activeMesh.rotation.z
+        );
+        const targetQ = BABYLON.Quaternion.FromEulerAngles(
+            p.targetEuler.x,
+            p.targetEuler.y,
+            p.targetEuler.z
+        );
+        const dot = Math.abs(
+            currentQ.x * targetQ.x + currentQ.y * targetQ.y +
+            currentQ.z * targetQ.z + currentQ.w * targetQ.w
+        );
+        // Защита от NaN из-за float-ошибок
+        let maxAngleDiff = Math.acos(Math.min(1, dot)) * 2;
+        if (isNaN(maxAngleDiff)) maxAngleDiff = Math.PI;
+        // ===================================================================
+
+        // Позиционный магнит
         if (dist < CONFIG.MAGNET_DIST && dist > CONFIG.MAGNET_END) {
-            const strength = ((CONFIG.MAGNET_DIST - dist) / (CONFIG.MAGNET_DIST - CONFIG.MAGNET_END)) * 0.3;
+            const baseStrength = ((CONFIG.MAGNET_DIST - dist) / (CONFIG.MAGNET_DIST - CONFIG.MAGNET_END)) * 0.3;
+            const strength = (this._isFlatPart ? 0.35 : 1.0) * baseStrength;
+
             this.activeMesh.position.x += (p.targetPos.x - this.activeMesh.position.x) * strength;
             this.activeMesh.position.z += (p.targetPos.z - this.activeMesh.position.z) * strength;
             this.activeMesh.position.y += (p.targetPos.y - this.activeMesh.position.y) * strength * 0.3;
-            this.ensureRotationEuler();
-            ['x', 'y', 'z'].forEach(axis => {
-                const diff = angleDiff(this.activeMesh.rotation[axis], p.targetEuler[axis]);
-                if (diff > 0.5 * Math.PI / 180) {
+
+            // Угловой магнит — только если угол ещё не в мёртвой зоне
+            if (maxAngleDiff > 1.5 * Math.PI / 180) {
+                ['x', 'y', 'z'].forEach(axis => {
+                    const diff = angleDiff(this.activeMesh.rotation[axis], p.targetEuler[axis]);
+                    if (diff < 1.0 * Math.PI / 180) return;
+
                     const rawDiff = normalizeAngle0(p.targetEuler[axis]) - normalizeAngle0(this.activeMesh.rotation[axis]);
                     const dir = (Math.abs(rawDiff) > Math.PI) ? -Math.sign(rawDiff) : Math.sign(rawDiff);
-                    this.activeMesh.rotation[axis] += dir * diff * strength * 0.7;
-                }
-            });
+                    const rotStrength = this._isFlatPart ? strength * 0.4 : strength * 0.7;
+                    this.activeMesh.rotation[axis] += dir * diff * rotStrength;
+                });
+            }
         }
-        if (dist > CONFIG.SNAP_DIST) return;
-        let maxAngleDiff = 0;
-        ['x', 'y', 'z'].forEach(axis => {
-            const diff = angleDiff(this.activeMesh.rotation[axis], p.targetEuler[axis]);
-            if (diff > maxAngleDiff) maxAngleDiff = diff;
-        });
-        const manualSnapBtn = document.getElementById('manualSnapBtn');
-        if (manualSnapBtn) {
-            const closeEnough = dist < 0.1 && maxAngleDiff < 20 * Math.PI / 180;
-            manualSnapBtn.style.display = closeEnough ? 'block' : 'none';
-            manualSnapBtn.style.opacity = closeEnough ? '1' : '0';
+
+        // Снап: <= вместо <, порог 0.15 вместо 0.12 (рукоятки часто чуть смещены по Y)
+        if (dist <= 0.15 && maxAngleDiff <= CONFIG.SNAP_ANGLE) {
+            this.doSnap();
         }
-        if (dist < 0.12 && maxAngleDiff < CONFIG.SNAP_ANGLE) { this.doSnap(); }
     }
 
     manualSnap() {
@@ -293,7 +356,16 @@ export class LearningMode extends Mode {
 
     doSnap() {
         if (this.phase !== 'play') return;
-        this.phase = 'snapping'; this.stopTimer(); playSnap();
+        this.phase = 'snapping'; this.stopTimer();
+
+
+        // Очищаем кадровый автоснап
+        if (this._autoSnapObs) {
+            this.scene.onBeforeRenderObservable.remove(this._autoSnapObs);
+            this._autoSnapObs = null;
+        }
+
+        playSnap();playSnap();
         const p = this.parts[this.level]; this.ensureRotationEuler();
         const aPos = new BABYLON.Animation('sp', 'position', 60, BABYLON.Animation.ANIMATIONTYPE_VECTOR3, BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
         aPos.setKeys([{ frame: 0, value: this.activeMesh.position.clone() }, { frame: 10, value: p.targetPos.clone() }]);
@@ -335,6 +407,9 @@ export class LearningMode extends Mode {
         this.phase = 'pre'; this.prePhase = 0; this.quizAnswered = false; this.userChangedColor = false;
         if (this.level === 0) levelStars.length = 0;
         const p = this.parts[this.level];
+        if (!p._originalColor) {
+            p._originalColor = { h: p.color.h, s: p.color.s, l: p.color.l };
+        }
         UIManager.setText('preSubtitle', `ИЗУЧАЕМ ДЕТАЛЬ · ${this.level + 1}/${this.parts.length}`);
         UIManager.setText('preTitle', p.name); UIManager.setText('preDesc', p.desc); UIManager.setText('previewLabel', p.name.toUpperCase());
         const hueEl = document.getElementById('colorHue'); const satEl = document.getElementById('colorSat'); const lightEl = document.getElementById('colorLight');
@@ -369,15 +444,18 @@ export class LearningMode extends Mode {
     showQuiz(p) {
         const qa = document.getElementById('quizArea');
         if (!qa) return;
-        qa.innerHTML = `<div class="quizQ">${p.quiz.q}</div>` + p.quiz.opts.map((o, i) => `<div class="quizOpt" data-quiz-index="${i}">${o}</div>`).join('');
-            qa.querySelectorAll('.quizOpt').forEach(el => {
-                el.addEventListener('click', (e) => this.quizAnswer(parseInt(e.target.dataset.quizIndex)));
-            });
+        qa.innerHTML = `<div class="quizQ">${p.quiz.q}</div>` +
+            p.quiz.opts.map((o, i) => `<div class="quizOpt" id="qo${i}" data-quiz-index="${i}">${o}</div>`).join('');
+        qa.querySelectorAll('.quizOpt').forEach(el => {
+            el.addEventListener('click', (e) => this.quizAnswer(parseInt(e.target.dataset.quizIndex)));
+        });
     }
 
     quizAnswer(i) {
+
         if (this.quizAnswered) return;
-        this.quizAnswered = true; const p = this.parts[this.level];
+        playQuizSelect();  // <-- ЗВУК ВЫБОРА
+        this.quizAnswered = true;        this.quizAnswered = true; const p = this.parts[this.level];
         document.querySelectorAll('.quizOpt').forEach(el => el.classList.add('locked'));
         const qo = document.getElementById('qo' + i); const qoAns = document.getElementById('qo' + p.quiz.ans);
         if (qo) qo.classList.add(i === p.quiz.ans ? 'correct' : 'wrong');
@@ -399,11 +477,23 @@ export class LearningMode extends Mode {
         this.activeMesh.position = new BABYLON.Vector3(-2.8, p.targetPos.y, 0.2);
         if (this.activeMesh.rotationQuaternion) this.activeMesh.rotationQuaternion = null;
         this.activeMesh.rotation = new BABYLON.Vector3(0, Math.random() * Math.PI * 2, 0);
+        try {
+            const bbox = this.activeMesh.getHierarchyBoundingVectors(true);
+            const size = bbox.max.subtract(bbox.min);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const minDim = Math.min(size.x, size.y, size.z);
+            this._isFlatPart = maxDim > 0 && (minDim / maxDim) < 0.3;
+        } catch (e) {
+            this._isFlatPart = false;
+        }
         this.timerVal = p.timeLimit; this.updateTimerDisplay();
         this.timerInterval = setInterval(() => this.tickTimer(), 1000);
         const instr = document.getElementById('instrBox');
         if (instr) instr.textContent = 'ЛКМ — тащить · ПКМ — камера · Колёсико — зум · Shift+Колёсико — поворот Y · Ctrl+Колёсико — поворот X · Shift+Ctrl+Колёсико — поворот Z · Shift+ЛКМ — Y-ось';
         document.getElementById('manualSnapBtn').style.display = 'none';
+        this._autoSnapObs = this.scene.onBeforeRenderObservable.add(() => {
+            if (this.phase === 'play' && this.activeMesh) this.checkAutoSnap();
+        });
     }
 
     createGhost(partDef) {
@@ -556,7 +646,12 @@ export class LearningMode extends Mode {
     }
 
     restart() {
+        if (this._autoSnapObs) {
+            this.scene?.onBeforeRenderObservable.remove(this._autoSnapObs);
+            this._autoSnapObs = null;
+        }
         this.level = 0; this.totalScore = 0; this.streakCount = 0; this.hintsLeft = 1; this.hintUsed = false;
+        this._isFlatPart = false; // <-- добавь
         this.placedMeshes.forEach(m => { if (m && !m.isDisposed()) m.dispose(); });
         this.placedMeshes = [];
         if (this.activeMesh && !this.activeMesh.isDisposed()) { this.activeMesh.dispose(); this.activeMesh = null; }
@@ -567,9 +662,32 @@ export class LearningMode extends Mode {
     exit() {
         super.exit();
         this.stopTimer();
+
+        if (this._autoSnapObs) {
+            this.scene?.onBeforeRenderObservable.remove(this._autoSnapObs);
+            this._autoSnapObs = null;
+        }
+
+        if (this._wheelHandler) {
+            window.removeEventListener('wheel', this._wheelHandler, { capture: true });
+            this._wheelHandler = null;
+        }
+        super.exit();
+        this.stopTimer();
+
+        // Удаляем глобальный wheel listener
+        if (this._wheelHandler) {
+            window.removeEventListener('wheel', this._wheelHandler, { capture: true });
+            this._wheelHandler = null;
+        }
         this.engine?.stopRenderLoop();
-        this.scene?.dispose(); this.engine?.dispose();
-        this.engine = null; this.scene = null; this.camera = null;
-        this.placedMeshes = []; this.activeMesh = null; this.ghostMesh = null;
+        this.scene?.dispose();
+        this.engine?.dispose();
+        this.engine = null;
+        this.scene = null;
+        this.camera = null;
+        this.placedMeshes = [];
+        this.activeMesh = null;
+        this.ghostMesh = null;
     }
 }

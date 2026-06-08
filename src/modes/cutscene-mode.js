@@ -15,6 +15,7 @@ export class CutsceneMode extends Mode {
         super.enter();
         const canvas = document.getElementById('cutsceneCanvas');
         if (!canvas) { this.skip(); return; }
+
         this.engine = new BABYLON.Engine(canvas, true, { antialias: true, preserveDrawingBuffer: true });
         this.scene = new BABYLON.Scene(this.engine);
         this.scene.clearColor = new BABYLON.Color4(0.45, 0.72, 0.90, 1);

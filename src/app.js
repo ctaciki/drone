@@ -1,6 +1,6 @@
 import { PARTS } from './data/parts.js';
 import { getPartScale } from './config.js';
-import { initAudioWarmup } from './core/audio-manager.js';
+import { initAudioWarmup, playHover } from './core/audio-manager.js';
 import { PreviewManager } from './components/preview-manager.js';
 import { CutsceneMode } from './modes/cutscene-mode.js';
 import { FreeMode } from './modes/free-mode.js';
@@ -25,6 +25,15 @@ class App {
 
     bindMenuEvents() {
         const mainMenu = document.getElementById('mainMenu');
+
+        // === ЗВУКИ НАВЕДЕНИЯ НА КНОПКИ МЕНЮ ===
+        const btnLearning = document.getElementById('btnLearning');
+        const btnFree = document.getElementById('btnFree');
+        [btnLearning, btnFree].forEach(btn => {
+            if (!btn) return;
+            btn.addEventListener('mouseenter', () => playHover());
+        });
+        // ======================================
 
         document.getElementById('btnLearning')?.addEventListener('click', () => {
             mainMenu.classList.add('hidden');
@@ -95,6 +104,5 @@ class App {
     }
 }
 
-// Глобальное присваивание — доступно из HTML и консоли
 window.app = new App();
 window.addEventListener('DOMContentLoaded', () => window.app.init());

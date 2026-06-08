@@ -57,5 +57,6 @@ export function playQuizSelect() {
     setTimeout(() => playTone(1100, 'sine', 0.1, 0.08), 60);
 }
 export function playHover() {
-    playTone(660, 'sine', 0.04, 0.06);
+    playTone(880, 'sine', 0.03, 0.05);
+    setTimeout(() => playTone(1320, 'sine', 0.05, 0.04), 30);
 }
